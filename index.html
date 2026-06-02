@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Блинчики — головоломка</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Блинчики</h1>
+      <p class="subtitle">Блинчики на сетке: переворот выбранного, +1 всем лицам. Параметры — в настройках перед стартом.</p>
+    </header>
+
+    <section class="setup" id="setup">
+      <div class="field">
+        <label for="sizeN">Размер поля n</label>
+        <input type="number" id="sizeN" min="3" max="12" value="5">
+      </div>
+      <div class="field">
+        <label for="filledM">Блинчиков m</label>
+        <input type="number" id="filledM" min="1" max="25" value="8">
+      </div>
+      <div class="field field--range">
+        <label>Старт сторон (от — до)</label>
+        <div class="range-inputs">
+          <input type="number" id="initMin" min="1" max="99" value="1" aria-label="Минимум старта">
+          <span class="range-sep">—</span>
+          <input type="number" id="initMax" min="1" max="99" value="5" aria-label="Максимум старта">
+        </div>
+      </div>
+      <div class="field">
+        <label for="winState">Победа (обе стороны =)</label>
+        <input type="number" id="winState" min="2" max="99" value="9">
+      </div>
+      <div class="field">
+        <label for="loseState">Проигрыш (сторона ≥)</label>
+        <input type="number" id="loseState" min="3" max="100" value="10">
+      </div>
+      <button type="button" id="startBtn" class="btn primary">Начать игру</button>
+      <p class="hint" id="setupHint"></p>
+    </section>
+
+    <section class="game hidden" id="game">
+      <div class="toolbar">
+        <div class="toolbar-actions">
+          <button type="button" id="restartBtn" class="btn">Заново</button>
+          <button type="button" id="skipBtn" class="btn">Пропуск хода</button>
+        </div>
+        <span class="stats" id="stats"></span>
+      </div>
+      <div class="board-wrap">
+        <div class="board" id="board" role="grid"></div>
+      </div>
+      <div class="legend" id="legend">
+        <span>Старт: <strong id="legendInit">1–5</strong></span>
+        <span>Цель: обе <strong id="legendWin">9</strong></span>
+        <span class="lose-mark">Проигрыш: <strong id="legendLose">10</strong></span>
+      </div>
+      <p class="message" id="message" aria-live="polite"></p>
+    </section>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
