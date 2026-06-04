@@ -10,53 +10,208 @@
   <div class="app">
     <header>
       <h1>Блинчики</h1>
-      <p class="subtitle">Блинчики на сетке: переворот выбранного, +1 всем лицам. Параметры — в настройках перед стартом.</p>
     </header>
 
     <section class="setup" id="setup">
-      <div class="field">
-        <label for="sizeN">Размер поля n</label>
-        <input type="number" id="sizeN" min="3" max="12" value="5">
-      </div>
-      <div class="field">
-        <label for="filledM">Блинчиков m</label>
-        <input type="number" id="filledM" min="1" max="25" value="8">
-      </div>
-      <div class="field field--range">
-        <label>Старт сторон (от — до)</label>
-        <div class="range-inputs">
-          <input type="number" id="initMin" min="1" max="99" value="1" aria-label="Минимум старта">
-          <span class="range-sep">—</span>
-          <input type="number" id="initMax" min="1" max="99" value="5" aria-label="Максимум старта">
+      <div class="rules-panel">
+        <h2 class="rules-title">Правила</h2>
+        <p class="rules-intro">Так же выглядит в игре — мини-превью с анимацией.</p>
+
+        <div class="rules-visual">
+          <article class="rule-card">
+            <div class="rule-demo" aria-hidden="true">
+              <div class="rule-demo-board">
+                <div class="rule-cell pancake rule-demo-tick">
+                  <span class="cell-face" style="background: hsl(72, 62%, 42%); color: rgba(0,0,0,.55)">
+                    <span class="cell-values"><span class="cell-value-face">4</span><span class="cell-value-back">2</span></span>
+                  </span>
+                </div>
+                <span class="rule-demo-arrow">→</span>
+                <div class="rule-cell pancake rule-demo-flip">
+                  <div class="cell-flipper rule-demo-flipper">
+                    <div class="cell-side cell-side--leave" style="background: hsl(72, 62%, 42%); color: rgba(0,0,0,.55)">
+                      <span class="cell-values"><span class="cell-value-face">4</span><span class="cell-value-back">2</span></span>
+                    </div>
+                    <div class="cell-side cell-side--arrive" style="background: hsl(48, 62%, 42%); color: rgba(0,0,0,.55)">
+                      <span class="cell-values"><span class="cell-value-face">2</span><span class="cell-value-back">4</span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <span class="rule-demo-caption rule-demo-caption--pulse">+1 лицам</span>
+            </div>
+            <p class="rule-card__text">Каждые <strong>n</strong> с +1 всем <strong>лицам</strong> (вспышка). Клик — <strong>переворот</strong>.</p>
+          </article>
+
+          <article class="rule-card">
+            <div class="rule-demo" aria-hidden="true">
+              <div class="rule-demo-collect">
+                <div class="rule-cell pancake rule-demo-drag">
+                  <span class="cell-face" style="background: hsl(96, 62%, 42%); color: rgba(0,0,0,.55)">
+                    <span class="cell-values"><span class="cell-value-face">3</span><span class="cell-value-back">5</span></span>
+                  </span>
+                </div>
+                <span class="rule-demo-drag-path">↗</span>
+                <div class="rule-demo-drop">счёт</div>
+              </div>
+              <div class="rule-demo-move">
+                <div class="rule-cell pancake"><span class="cell-face" style="background: hsl(84, 62%, 42%)"><span class="cell-values"><span class="cell-value-face">3</span><span class="cell-value-back">1</span></span></span></div>
+                <span class="rule-demo-arrow">→</span>
+                <div class="rule-cell empty rule-demo-slot"></div>
+              </div>
+            </div>
+            <p class="rule-card__text"><strong>Вверх</strong> или <strong>двойной клик</strong> — в счёт. На <strong>пустую клетку</strong> — переместить.</p>
+          </article>
+
+          <article class="rule-card">
+            <div class="rule-demo" aria-hidden="true">
+              <div class="rule-demo-hud">
+                <div class="rule-demo-counter">
+                  <span class="rule-demo-counter-val">84</span>/<span>100</span>
+                </div>
+                <div class="rule-demo-timer"><div class="rule-demo-timer-fill"></div></div>
+              </div>
+              <span class="rule-demo-caption">12 ходов · цель 100</span>
+            </div>
+            <p class="rule-card__text">Набери цель за дедлайн. Не успел — <span class="lose-mark">проигрыш</span>. Ур. 1 — <strong>10 с</strong>/ход, дальше <strong>6 с</strong>. Цель ×1.5, +4–5 блинчиков.</p>
+          </article>
+
+          <article class="rule-card">
+            <div class="rule-demo" aria-hidden="true">
+              <div class="rule-cell pancake rule-demo-burn cell--crumble">
+                <span class="cell-face" style="background: #1a1a1a; color: #888">
+                  <span class="cell-values"><span class="cell-value-face">10</span><span class="cell-value-back">3</span></span>
+                </span>
+                <span class="cell-fx-label cell-fx-label--burn">сгорел</span>
+              </div>
+            </div>
+            <p class="rule-card__text"><span class="lose-mark">Сгорание</span>: сторона ≥ порога — блинчик исчезает.</p>
+          </article>
+
+          <article class="rule-card">
+            <div class="rule-demo" aria-hidden="true">
+              <div class="rule-demo-column">
+                <div class="rule-cell pancake rule-demo-col-cell"><span class="cell-face" style="background: hsl(60, 62%, 42%)"><span class="cell-values"><span class="cell-value-face">3</span><span class="cell-value-back">1</span></span></span></div>
+                <div class="rule-cell pancake rule-demo-col-cell rule-demo-col-blue">
+                  <span class="cell-blue-mark"></span>
+                  <span class="cell-face" style="background: hsl(48, 62%, 42%)"><span class="cell-values"><span class="cell-value-face">4</span><span class="cell-value-back">2</span></span></span>
+                </div>
+                <div class="rule-cell pancake rule-demo-col-cell"><span class="cell-face" style="background: hsl(72, 62%, 42%)"><span class="cell-values"><span class="cell-value-face">2</span><span class="cell-value-back">4</span></span></span></div>
+              </div>
+              <span class="rule-demo-caption blue-mark">−1 в колонке</span>
+            </div>
+            <p class="rule-card__text"><span class="blue-mark">Синяя</span>: каждый ход −1 всем в этой колонке (мин. 1).</p>
+          </article>
+
+          <article class="rule-card">
+            <div class="rule-demo" aria-hidden="true">
+              <div class="rule-demo-red-grid">
+                <div class="rule-cell pancake"><span class="cell-face" style="background: hsl(72, 62%, 42%)"><span class="cell-values"><span class="cell-value-face">4</span><span class="cell-value-back">2</span></span></span></div>
+                <div class="rule-cell pancake rule-demo-red-center">
+                  <span class="cell-red-mark">2</span>
+                  <span class="cell-face" style="background: hsl(60, 62%, 42%)"><span class="cell-values"><span class="cell-value-face">3</span><span class="cell-value-back">1</span></span></span>
+                </div>
+                <div class="rule-cell pancake cell--has-bonus">
+                  <span class="cell-face" style="background: hsl(48, 62%, 42%)">
+                    <span class="cell-values"><span class="cell-value-face">5 (+2)</span><span class="cell-value-back">2</span></span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p class="rule-card__text"><span class="red-mark">Красная</span>: соседям <strong>+N</strong> бонус в скобках (N = число соседей).</p>
+          </article>
+
+          <article class="rule-card rule-card--wide">
+            <div class="rule-demo" aria-hidden="true">
+              <div class="rule-demo-combos">
+                <div class="rule-cell pancake cell--combo-pair">
+                  <span class="cell-combo-badges"><span class="cell-combo-badge cell-combo-badge--pair">пара</span></span>
+                  <span class="cell-face" style="background: hsl(36, 62%, 42%); color: #fff"><span class="cell-values"><span class="cell-value-face">5</span><span class="cell-value-back">5</span></span></span>
+                </div>
+                <div class="rule-cell pancake cell--combo-high">
+                  <span class="cell-combo-badges"><span class="cell-combo-badge cell-combo-badge--high">good</span></span>
+                  <span class="cell-face" style="background: hsl(12, 62%, 38%); color: #fff"><span class="cell-values"><span class="cell-value-face">7</span><span class="cell-value-back">8</span></span></span>
+                </div>
+                <div class="rule-cell pancake cell--combo-nine">
+                  <span class="cell-combo-badges"><span class="cell-combo-badge cell-combo-badge--nine">perfect</span></span>
+                  <span class="cell-face" style="background: #1a1a1a; color: #888"><span class="cell-values"><span class="cell-value-face">9</span><span class="cell-value-back">9</span></span></span>
+                </div>
+              </div>
+              <span class="rule-demo-score rule-demo-score--pop">пара · good · perfect</span>
+            </div>
+            <p class="rule-card__text">Комбо при сборе: <span class="hint-mark">пара +20%</span>, <span class="hint-mark">good +10%</span>, <span class="hint-mark">perfect +34%</span>.</p>
+          </article>
         </div>
       </div>
-      <div class="field">
-        <label for="winState">Победа (обе стороны =)</label>
-        <input type="number" id="winState" min="2" max="99" value="9">
-      </div>
-      <div class="field">
-        <label for="loseState">Проигрыш (сторона ≥)</label>
-        <input type="number" id="loseState" min="3" max="100" value="10">
-      </div>
-      <button type="button" id="startBtn" class="btn primary">Начать игру</button>
+
+      <button type="button" id="startBtn" class="btn primary btn--play">Играть</button>
+
+      <details class="setup-settings">
+        <summary>Настройки</summary>
+        <div class="setup-settings-grid">
+          <div class="field">
+            <label for="sizeN">Размер поля n</label>
+            <input type="number" id="sizeN" min="3" max="12" value="5">
+          </div>
+          <div class="field">
+            <label for="filledM">Блинчиков m</label>
+            <input type="number" id="filledM" min="1" max="25" value="8">
+          </div>
+          <div class="field field--range">
+            <label>Старт сторон (от — до)</label>
+            <div class="range-inputs">
+              <input type="number" id="initMin" min="1" max="99" value="1" aria-label="Минимум старта">
+              <span class="range-sep">—</span>
+              <input type="number" id="initMax" min="1" max="99" value="5" aria-label="Максимум старта">
+            </div>
+          </div>
+          <div class="field">
+            <label for="loseState">Сгорание (сторона ≥)</label>
+            <input type="number" id="loseState" min="10" max="100" value="10">
+          </div>
+          <div class="field">
+            <label for="turnInterval">Интервал хода (ур. 2+, сек)</label>
+            <input type="number" id="turnInterval" min="0.5" max="30" step="0.5" value="6" readonly title="Уровень 1 всегда 10 с">
+          </div>
+          <div class="field">
+            <label for="scoreResetEvery">Дедлайн цели (ходов)</label>
+            <input type="number" id="scoreResetEvery" min="1" max="99" value="12">
+          </div>
+        </div>
+      </details>
       <p class="hint" id="setupHint"></p>
     </section>
 
     <section class="game hidden" id="game">
+      <div class="hud">
+        <div class="hud-top">
+          <div class="counter counter--score" id="scoreCounter">
+            <span class="counter-label">Счёт · уровень <span id="levelValue">1</span></span>
+            <strong><span id="scoreValue">0</span>/<span id="scoreTarget">100</span></strong>
+            <span class="counter-sub">дедлайн через <span id="resetInValue">12</span> ход.</span>
+          </div>
+          <div class="drop-zone" id="dropZone">
+            Сюда — собрать в счёт
+          </div>
+        </div>
+        <div class="timer-block">
+          <div class="timer-head">
+            <span class="timer-title">До следующего хода</span>
+            <span class="timer-label" id="timerLabel">10.0 с</span>
+          </div>
+          <div class="timer-track" id="timerTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="timer-fill" id="timerFill"></div>
+          </div>
+        </div>
+      </div>
       <div class="toolbar">
         <div class="toolbar-actions">
           <button type="button" id="restartBtn" class="btn">Заново</button>
-          <button type="button" id="skipBtn" class="btn">Пропуск хода</button>
         </div>
         <span class="stats" id="stats"></span>
       </div>
       <div class="board-wrap">
         <div class="board" id="board" role="grid"></div>
-      </div>
-      <div class="legend" id="legend">
-        <span>Старт: <strong id="legendInit">1–5</strong></span>
-        <span>Цель: обе <strong id="legendWin">9</strong></span>
-        <span class="lose-mark">Проигрыш: <strong id="legendLose">10</strong></span>
       </div>
       <p class="message" id="message" aria-live="polite"></p>
     </section>
