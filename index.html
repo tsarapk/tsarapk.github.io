@@ -60,7 +60,7 @@
                 <div class="rule-cell empty rule-demo-slot"></div>
               </div>
             </div>
-            <p class="rule-card__text"><strong>Вверх</strong> или <strong>двойной клик</strong> — в счёт. На <strong>пустую клетку</strong> — переместить.</p>
+            <p class="rule-card__text"><strong>Двойной клик</strong> — продать. <strong>Продать все</strong> — вся доска. На <strong>пустую клетку</strong> — переместить.</p>
           </article>
 
           <article class="rule-card">
@@ -190,9 +190,6 @@
             <strong><span id="scoreValue">0</span>/<span id="scoreTarget">100</span></strong>
             <span class="counter-sub">дедлайн через <span id="resetInValue">12</span> ход.</span>
           </div>
-          <div class="drop-zone" id="dropZone">
-            Сюда — собрать в счёт
-          </div>
         </div>
         <div class="timer-block">
           <div class="timer-head">
@@ -206,6 +203,7 @@
       </div>
       <div class="toolbar">
         <div class="toolbar-actions">
+          <button type="button" id="sellAllBtn" class="btn btn--sell">Продать все</button>
           <button type="button" id="restartBtn" class="btn">Заново</button>
         </div>
         <span class="stats" id="stats"></span>

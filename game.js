@@ -1,6 +1,6 @@
 /**
  * Блинчики: каждые n секунд автоматически +1 всем лицам (setInterval).
- * Клик — только переворот. Сбор — drag-and-drop. Сгорание/спавн с эффектами.
+ * Клик — переворот. Двойной клик — продажа. Сгорание/спавн с эффектами.
  */
 const VALUE_MIN = 1;
 const FLIP_ANIM_MS = 420;
@@ -8,7 +8,7 @@ const CRUMBLE_ANIM_MS = 650;
 const SPAWN_ANIM_MS = 520;
 const TICK_FLASH_MS = 280;
 const WIN_SCORE_TARGET_BASE = 100;
-const LEVEL_TARGET_MULTIPLIER = 1.5;
+const LEVEL_TARGET_MULTIPLIER = 1.2;
 const DEFAULT_TURN_SEC = 6;
 const DEFAULT_SCORE_RESET_EVERY = 12;
 const DEFAULT_SIZE_N = 5;
@@ -16,17 +16,20 @@ const DEFAULT_FILLED_M = 8;
 const DEFAULT_INIT_MIN = 1;
 const DEFAULT_INIT_MAX = 5;
 const DEFAULT_LOSE_STATE = 10;
-const SPAWN_CHANCE = 0.28;
+const SPAWN_CHANCE = 0.45;
 const BLUE_SPAWN_CHANCE = 0.05;
-const RED_SPAWN_CHANCE = 0.05;
+const RED_SPAWN_CHANCE = 0.1;
 const LEVEL_SPAWN_MIN = 4;
 const LEVEL_SPAWN_MAX = 5;
-const LEVEL_1_TURN_SEC = 10;
-const LEVEL_OTHER_TURN_SEC = 6;
+const LEVEL_1_TURN_SEC = 8;
+const LEVEL_OTHER_TURN_SEC = 8;
 const MIN_TURN_SEC = 0.5;
 const CLICK_FLIP_DELAY_MS = 260;
 const LEVEL_UP_ANIM_MS = 600;
-const LOSE_RESTART_DELAY_MS = 1800;
+const LEVEL_UP_SPAWN_DELAY_MS = 380;
+const LOSE_RESTART_DELAY_MS = 3000;
+/** При перетаскивании игровое время ×0.8 (на 20% медленнее) */
+const DRAG_TIME_SCALE = 0.6;
 
 let n = DEFAULT_SIZE_N;
 let m = DEFAULT_FILLED_M;
@@ -45,6 +48,11 @@ let flippingCell = null;
 let tickProcessing = false;
 let tickVisualBusy = false;
 let pendingFlipTimer = null;
+let flipFinishTimer = null;
+let flipToken = 0;
+let flipSuppressUntil = 0;
+let lastSellKey = "";
+let lastSellAt = 0;
 let baseTurnIntervalSec = DEFAULT_TURN_SEC;
 let score = 0;
 let level = 1;
@@ -52,10 +60,13 @@ let scoreTarget = WIN_SCORE_TARGET_BASE;
 let turnCount = 0;
 let draggedCell = null;
 let dragJustEnded = false;
+let dragDropSucceeded = false;
 let boardDragActive = false;
 let timerRafId = null;
-let turnIntervalId = null;
 let turnPeriodStart = 0;
+let dragTimeCredit = 0;
+let dragCreditLastNow = 0;
+let turnTriggerPending = false;
 
 /** @type {{ burns: Set<string>, spawns: Set<string>, drains: Set<string>, tick: boolean }} */
 let boardEffects = { burns: new Set(), spawns: new Set(), drains: new Set(), tick: false };
@@ -71,7 +82,6 @@ const scoreValueEl = $("scoreValue");
 const scoreTargetEl = $("scoreTarget");
 const levelValueEl = $("levelValue");
 const scoreCounterEl = $("scoreCounter");
-const dropZoneEl = $("dropZone");
 const resetInEl = $("resetInValue");
 const timerTrackEl = $("timerTrack");
 const timerFillEl = $("timerFill");
@@ -163,17 +173,21 @@ function recalcRedNeighborBonuses() {
 function getCollectPercentBonus(tile) {
   const [a, b] = tile.sides;
   if (a === 9 && b === 9) {
-    return { percent: 34, tags: ["perfect"] };
+    return { percent: 100, tags: ["perfect"] };
   }
   let percent = 0;
   const tags = [];
   if (a === b) {
-    percent += 20;
+    percent += 25;
     tags.push("пара");
   }
   if (a > 6 && b > 6) {
-    percent += 10;
+    percent += 25;
     tags.push("good");
+  }
+  if(a === 6 && b === 7) {
+    percent += 5;
+    tags.push("67!");
   }
   return { percent, tags };
 }
@@ -196,6 +210,9 @@ function getScoreComboHints(tile) {
   if (a > 6 && b > 6) {
     hints.push({ key: "high", label: "good", className: "cell--combo-high" });
   }
+  if (a === 6 && b === 7) {
+    hints.push({ key: "67", label: "67!", className: "cell--combo-high" });
+  }
   return hints;
 }
 
@@ -212,10 +229,10 @@ function applyComboVisual(btn, tile) {
     badge.textContent = combo.label;
     badge.title =
       combo.key === "nine"
-        ? "perfect: +34% к счёту"
+        ? "perfect: +50% к счёту"
         : combo.key === "pair"
-          ? "пара: +20% к счёту"
-          : "good: +10% к счёту";
+          ? "пара: +25% к счёту"
+          : "good: +25% к счёту";
     wrap.appendChild(badge);
   }
   btn.appendChild(wrap);
@@ -460,6 +477,7 @@ function animateCounter(counterEl, text, kind = "good") {
 
 function addScore(amount) {
   score += amount;
+  if (scoreValueEl) scoreValueEl.textContent = String(score);
   animateCounter(scoreCounterEl, `+${amount}`, "good");
 }
 
@@ -473,22 +491,44 @@ function isScoreDeadlineTurn() {
   return turnCount > 0 && turnCount % scoreResetEvery === 0;
 }
 
-function collectPancake(r, c) {
-  const cell = grid[r]?.[c];
-  if (!cell?.active || !cell.tile) return false;
-  const tile = cell.tile;
+function calcPancakeGain(tile) {
   const base = baseSideSum(tile);
   const bonusTotal = bonusSideSum(tile);
   const { percent, tags } = getCollectPercentBonus(tile);
   const percentBonus = applyPercentBonus(base, percent);
-  const gained = base + bonusTotal + percentBonus;
+  return {
+    base,
+    bonusTotal,
+    percentBonus,
+    tags,
+    gained: base + bonusTotal + percentBonus,
+  };
+}
+
+function formatCollectMessage(parts, gained, prefix = "Продано") {
+  return parts.length > 1
+    ? `${prefix} ${parts.join(" ")} = ${gained}.`
+    : `${prefix} +${gained} к счёту.`;
+}
+
+function patchCellEmpty(r, c) {
+  if (!boardEl) return;
+  const el = boardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+  if (!el || el.classList.contains("empty")) return;
+  const slot = createCellEl(r, c, false);
+  slot.classList.add("empty");
+  slot.setAttribute("aria-label", "Пустая клетка — сюда можно перетащить блинчик");
+  el.replaceWith(slot);
+}
+
+function collectPancake(r, c) {
+  const cell = grid[r]?.[c];
+  if (!cell?.active || !cell.tile) return false;
+  const { base, bonusTotal, percentBonus, tags, gained } = calcPancakeGain(cell.tile);
   addScore(gained);
   removeCell(r, c);
   recalcRedNeighborBonuses();
-  if (dropZoneEl) {
-    dropZoneEl.classList.add("drop-zone--collect");
-    window.setTimeout(() => dropZoneEl.classList.remove("drop-zone--collect"), 400);
-  }
+  patchCellEmpty(r, c);
 
   const parts = [`+${base}`];
   if (bonusTotal > 0) parts.push(`+${bonusTotal} (бонус)`);
@@ -496,9 +536,28 @@ function collectPancake(r, c) {
     const tagNote = tags.length ? `: ${tags.join(", ")}` : "";
     parts.push(`+${percentBonus} (${percent}%${tagNote})`);
   }
-  setMessage(
-    parts.length > 1 ? `Собрано ${parts.join(" ")} = ${gained}.` : `Собрано +${gained} к счёту.`
-  );
+  setMessage(formatCollectMessage(parts, gained));
+  return true;
+}
+
+function sellAllPancakes() {
+  if (!canInteract()) return false;
+  const cells = getActiveCellsOn(grid);
+  if (cells.length === 0) {
+    setMessage("Нечего продавать.");
+    return false;
+  }
+  let total = 0;
+  for (const { r, c } of cells) {
+    const tile = grid[r][c].tile;
+    if (!tile) continue;
+    total += calcPancakeGain(tile).gained;
+    removeCell(r, c);
+    patchCellEmpty(r, c);
+  }
+  recalcRedNeighborBonuses();
+  addScore(total);
+  setMessage(`Продано всё: +${total} (${cells.length} блинчиков).`);
   return true;
 }
 
@@ -532,10 +591,35 @@ function clearBoardDropHints() {
   });
 }
 
+function flushDragTimeCredit(now) {
+  if (!dragCreditLastNow) return;
+  const dt = (now - dragCreditLastNow) / 1000;
+  if (dt > 0) dragTimeCredit += dt * (1 - DRAG_TIME_SCALE);
+  dragCreditLastNow = now;
+}
+
+function getEffectiveTurnElapsed(now) {
+  return Math.max(0, (now - turnPeriodStart) / 1000 - dragTimeCredit);
+}
+
+function resetTurnClock(now = performance.now()) {
+  turnPeriodStart = now;
+  dragTimeCredit = 0;
+  dragCreditLastNow = boardDragActive ? now : 0;
+}
+
 function setBoardDragMode(active) {
+  const now = performance.now();
+  if (active && !boardDragActive) {
+    dragCreditLastNow = now;
+  } else if (!active && boardDragActive) {
+    flushDragTimeCredit(now);
+    dragCreditLastNow = 0;
+  }
   boardDragActive = active;
   const wrap = getBoardWrap();
   if (wrap) wrap.classList.toggle("board-wrap--pan-drag", active);
+  if (timerTrackEl) timerTrackEl.classList.toggle("timer-track--slowmo", active);
 }
 
 function formatSideValue(base, bonus) {
@@ -777,38 +861,46 @@ function setMessage(text, kind = "") {
 }
 
 async function advanceLevel() {
-  if (pendingFlipTimer) {
-    clearTimeout(pendingFlipTimer);
-    pendingFlipTimer = null;
-  }
-  flippingCell = null;
+  cancelPendingFlip();
+  cancelActiveFlip();
   draggedCell = null;
   setBoardDragMode(false);
   clearBoardDropHints();
   clearBoardEffects();
   getBoardWrap()?.classList.remove("board-wrap--tick");
 
+  const overflow = Math.max(0, score - scoreTarget);
   level += 1;
   scoreTarget = Math.ceil(scoreTarget * LEVEL_TARGET_MULTIPLIER);
-  score = 0;
+  score = overflow;
   turnCount = 0;
   turnIntervalSec = turnSecForLevel(level);
   startTurnTimer();
 
-  animateCounter(scoreCounterEl, `ур. ${level}`, "good");
+  animateCounter(
+    scoreCounterEl,
+    overflow > 0 ? `ур. ${level} +${overflow}` : `ур. ${level}`,
+    "good"
+  );
   updateStats();
+
+  const carryMsg = overflow > 0 ? ` Перенос: ${overflow}/${scoreTarget}.` : "";
+  setMessage(
+    `Уровень ${level}! Цель ${scoreTarget}, ход ${turnIntervalSec.toFixed(1)} с.${carryMsg}`,
+    "win"
+  );
+
+  await delay(LEVEL_UP_SPAWN_DELAY_MS);
 
   const spawned = massSpawnForLevel();
   recalcRedNeighborBonuses();
   renderBoard();
-  const spawnMsg =
-    spawned.length > 0
-      ? ` Появилось блинчиков: ${spawned.length}.`
-      : "";
-  setMessage(
-    `Уровень ${level}! Цель ${scoreTarget}, ход ${turnIntervalSec.toFixed(1)} с.${spawnMsg}`,
-    "win"
-  );
+  if (spawned.length > 0) {
+    setMessage(
+      `Уровень ${level}! Цель ${scoreTarget}.${carryMsg} Появилось блинчиков: ${spawned.length}.`,
+      "win"
+    );
+  }
 
   if (spawned.length > 0) {
     tickVisualBusy = true;
@@ -826,14 +918,11 @@ function resetPlayingState() {
   initGrid();
   recalcRedNeighborBonuses();
   phase = "playing";
-  flippingCell = null;
+  cancelPendingFlip();
+  cancelActiveFlip();
   tickProcessing = false;
   tickVisualBusy = false;
   draggedCell = null;
-  if (pendingFlipTimer) {
-    clearTimeout(pendingFlipTimer);
-    pendingFlipTimer = null;
-  }
   score = 0;
   level = 1;
   scoreTarget = WIN_SCORE_TARGET_BASE;
@@ -953,44 +1042,46 @@ function stopTurnTimer() {
     cancelAnimationFrame(timerRafId);
     timerRafId = null;
   }
-  if (turnIntervalId !== null) {
-    clearInterval(turnIntervalId);
-    turnIntervalId = null;
-  }
+  dragCreditLastNow = 0;
+  turnTriggerPending = false;
 }
 
-/** Только визуализация — ходы запускает setInterval */
 function tickTimerFrame(now) {
   if (phase !== "playing") return;
 
-  const elapsed = (now - turnPeriodStart) / 1000;
+  if (boardDragActive && dragCreditLastNow) flushDragTimeCredit(now);
+
+  const elapsed = getEffectiveTurnElapsed(now);
   const phaseElapsed = elapsed % turnIntervalSec;
   const progress = phaseElapsed / turnIntervalSec;
   const left = turnIntervalSec - phaseElapsed;
 
   updateTimerVisual(progress, left);
+
+  if (elapsed >= turnIntervalSec && !tickProcessing && !turnTriggerPending) {
+    turnTriggerPending = true;
+    void processTimedTurn().finally(() => {
+      turnTriggerPending = false;
+    });
+  }
+
   timerRafId = requestAnimationFrame(tickTimerFrame);
 }
 
 function startTurnTimer() {
   stopTurnTimer();
-  turnPeriodStart = performance.now();
+  resetTurnClock();
   updateTimerVisual(0, turnIntervalSec);
-
-  const ms = Math.max(500, Math.round(turnIntervalSec * 1000));
-  turnIntervalId = window.setInterval(() => {
-    void processTimedTurn();
-  }, ms);
-
   timerRafId = requestAnimationFrame(tickTimerFrame);
 }
 
 async function checkLevelProgress() {
-  if (score >= scoreTarget) {
+  let advanced = false;
+  while (phase === "playing" && score >= scoreTarget) {
     await advanceLevel();
-    return true;
+    advanced = true;
   }
-  return false;
+  return advanced;
 }
 
 async function processTimedTurn() {
@@ -999,7 +1090,7 @@ async function processTimedTurn() {
   tickVisualBusy = true;
 
   turnCount += 1;
-  turnPeriodStart = performance.now();
+  resetTurnClock();
 
   boardEffects.tick = true;
   const boardWrap = getBoardWrap();
@@ -1100,7 +1191,7 @@ function startGame() {
   setupEl.classList.add("hidden");
   gameEl.classList.remove("hidden");
   setMessage(
-    `Уровень 1, цель ${scoreTarget}. Ход каждые ${turnIntervalSec} с. За ${scoreResetEvery} ходов набери цель.`
+    `Уровень 1, цель ${scoreTarget}. Двойной клик — продать, «Продать все» — вся доска.`
   );
   updateStats();
   renderBoard();
@@ -1121,11 +1212,28 @@ function endGame(won) {
   renderBoard();
 }
 
+function cancelPendingFlip() {
+  if (!pendingFlipTimer) return;
+  clearTimeout(pendingFlipTimer);
+  pendingFlipTimer = null;
+}
+
+function cancelActiveFlip() {
+  flipToken += 1;
+  if (flipFinishTimer) {
+    clearTimeout(flipFinishTimer);
+    flipFinishTimer = null;
+  }
+  flippingCell = null;
+}
+
 function doFlip(r, c) {
   if (!canInteract() || isCellBusy(r, c)) return;
   const cell = grid[r][c];
   if (!cell.active || !cell.tile) return;
 
+  cancelActiveFlip();
+  const token = flipToken;
   flippingCell = { r, c };
   const tile = cell.tile;
   const snap = {
@@ -1142,38 +1250,74 @@ function doFlip(r, c) {
   snap.arrivingFaceBonus = faceBonus(tile);
   snap.arrivingBackBonus = backBonus(tile);
 
+  const live = grid[r]?.[c];
+  if (!live?.active || !live.tile) {
+    flippingCell = null;
+    renderBoard();
+    return;
+  }
   renderBoard(snap);
-  setTimeout(() => {
+  flipFinishTimer = window.setTimeout(() => {
+    flipFinishTimer = null;
+    if (token !== flipToken) return;
     if (flippingCell?.r === r && flippingCell?.c === c) flippingCell = null;
     renderBoard();
     void checkLevelProgress();
   }, FLIP_ANIM_MS);
 }
 
-function onPancakeClick(r, c) {
-  if (dragJustEnded) return;
-  if (!canInteract() || isCellBusy(r, c)) return;
-  const cell = grid[r][c];
-  if (!cell.active || !cell.tile) return;
-
-  if (pendingFlipTimer) clearTimeout(pendingFlipTimer);
-  pendingFlipTimer = window.setTimeout(() => {
-    pendingFlipTimer = null;
-    doFlip(r, c);
-  }, CLICK_FLIP_DELAY_MS);
+function applySellSync(r, c) {
+  if (!canInteract()) return false;
+  cancelPendingFlip();
+  cancelActiveFlip();
+  if (!collectPancake(r, c)) return false;
+  updateStats();
+  renderBoard();
+  return true;
 }
 
-function onPancakeDoubleClick(r, c) {
-  if (dragJustEnded || !canInteract()) return;
-  if (pendingFlipTimer) {
-    clearTimeout(pendingFlipTimer);
-    pendingFlipTimer = null;
-  }
-  if (isCellBusy(r, c)) return;
-  if (!collectPancake(r, c)) return;
+async function completeSellAsync() {
+  await checkLevelProgress();
   renderBoard();
   updateStats();
-  void checkLevelProgress();
+}
+
+function requestSellPancake(r, c) {
+  const key = `${r},${c}`;
+  const now = performance.now();
+  if (key === lastSellKey && now - lastSellAt < 80) return;
+  lastSellKey = key;
+  lastSellAt = now;
+
+  cancelPendingFlip();
+  cancelActiveFlip();
+  flipSuppressUntil = performance.now() + FLIP_ANIM_MS;
+  if (!applySellSync(r, c)) return;
+  void completeSellAsync();
+}
+
+function onPancakeClick(r, c, clickDetail = 1) {
+  if (dragJustEnded) return;
+  if (!canInteract()) return;
+  const cell = grid[r][c];
+  if (!cell?.active || !cell?.tile) return;
+
+  cancelPendingFlip();
+
+  if (clickDetail >= 2) {
+    requestSellPancake(r, c);
+    return;
+  }
+
+  if (isCellBusy(r, c)) return;
+
+  pendingFlipTimer = window.setTimeout(() => {
+    pendingFlipTimer = null;
+    if (performance.now() < flipSuppressUntil) return;
+    const cur = grid[r]?.[c];
+    if (!cur?.active || !cur?.tile) return;
+    doFlip(r, c);
+  }, CLICK_FLIP_DELAY_MS);
 }
 
 function onPancakeDragStart(e) {
@@ -1182,6 +1326,8 @@ function onPancakeDragStart(e) {
     e.preventDefault();
     return;
   }
+  cancelPendingFlip();
+  dragDropSucceeded = false;
   draggedCell = {
     r: parseInt(el.dataset.r, 10),
     c: parseInt(el.dataset.c, 10),
@@ -1203,17 +1349,17 @@ function onPancakeDragStart(e) {
 }
 
 function onPancakeDragEnd() {
-  dragJustEnded = true;
-  window.setTimeout(() => {
-    dragJustEnded = false;
-  }, 200);
   setBoardDragMode(false);
   clearBoardDropHints();
   boardEl.querySelectorAll(".cell--dragging").forEach((el) => {
     el.classList.remove("cell--dragging");
   });
-  dropZoneEl?.classList.remove("drop-zone--active");
   draggedCell = null;
+  if (!dragDropSucceeded) return;
+  dragJustEnded = true;
+  window.setTimeout(() => {
+    dragJustEnded = false;
+  }, 200);
 }
 
 function onBoardDragOver(e) {
@@ -1222,11 +1368,8 @@ function onBoardDragOver(e) {
   if (!empty) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = "move";
-  const r = parseInt(empty.dataset.r, 10);
-  const c = parseInt(empty.dataset.c, 10);
   clearBoardDropHints();
   empty.classList.add("cell--drop-hint");
-  dropZoneEl?.classList.remove("drop-zone--active");
 }
 
 function onBoardDragLeave(e) {
@@ -1247,8 +1390,8 @@ function onBoardDrop(e) {
   draggedCell = null;
   setBoardDragMode(false);
   clearBoardDropHints();
-  dropZoneEl?.classList.remove("drop-zone--active");
 
+  dragDropSucceeded = true;
   if (!movePancake(r, c, toR, toC)) return;
   recalcRedNeighborBonuses();
   renderBoard();
@@ -1256,33 +1399,20 @@ function onBoardDrop(e) {
   setMessage("Блинчик перемещён на другую клетку.");
 }
 
-function onDropZoneDragOver(e) {
-  if (!draggedCell || phase !== "playing") return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = "move";
-  dropZoneEl?.classList.add("drop-zone--active");
-}
-
-function onDropZoneDragLeave() {
-  dropZoneEl?.classList.remove("drop-zone--active");
-}
-
-function onDropZoneDrop(e) {
-  e.preventDefault();
-  if (!draggedCell || !canInteract()) return;
-
-  const { r, c } = draggedCell;
-  draggedCell = null;
-  dropZoneEl.classList.remove("drop-zone--active");
-
-  if (!collectPancake(r, c)) return;
+async function onSellAllClick() {
+  cancelPendingFlip();
+  cancelActiveFlip();
+  if (!sellAllPancakes()) return;
   renderBoard();
   updateStats();
-  void checkLevelProgress();
+  await checkLevelProgress();
+  renderBoard();
+  updateStats();
 }
 
 function bindEvents() {
   $("startBtn").addEventListener("click", startGame);
+  $("sellAllBtn").addEventListener("click", onSellAllClick);
   $("restartBtn").addEventListener("click", () => {
     stopTurnTimer();
     gameEl.classList.add("hidden");
@@ -1304,13 +1434,7 @@ function bindEvents() {
   boardEl.addEventListener("click", (e) => {
     const el = e.target.closest(".cell.pancake");
     if (!el) return;
-    onPancakeClick(parseInt(el.dataset.r, 10), parseInt(el.dataset.c, 10));
-  });
-  boardEl.addEventListener("dblclick", (e) => {
-    const el = e.target.closest(".cell.pancake");
-    if (!el) return;
-    e.preventDefault();
-    onPancakeDoubleClick(parseInt(el.dataset.r, 10), parseInt(el.dataset.c, 10));
+    onPancakeClick(parseInt(el.dataset.r, 10), parseInt(el.dataset.c, 10), e.detail);
   });
   boardEl.addEventListener("dragstart", onPancakeDragStart);
   boardEl.addEventListener("dragend", onPancakeDragEnd);
@@ -1326,11 +1450,6 @@ function bindEvents() {
     onPancakeClick(parseInt(el.dataset.r, 10), parseInt(el.dataset.c, 10));
   });
 
-  if (dropZoneEl) {
-    dropZoneEl.addEventListener("dragover", onDropZoneDragOver);
-    dropZoneEl.addEventListener("dragleave", onDropZoneDragLeave);
-    dropZoneEl.addEventListener("drop", onDropZoneDrop);
-  }
 }
 
 bindEvents();
